@@ -1,3 +1,4 @@
+import API_BASE_URL from "../config";
 import { useTheme } from './ThemeContext';
 import React, { useState, useRef, useEffect } from 'react';
 import {
@@ -232,7 +233,7 @@ const c = {
     setShowFollowups(false);
 
     try {
-      const response = await fetch("https://campusiq-backend-iiqo.onrender.com", {
+      const response = await fetch(`${API_BASE_URL}/chat`,{
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

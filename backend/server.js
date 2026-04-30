@@ -6,7 +6,12 @@ const Groq = require("groq-sdk");
 const staffData = require("./data/staffData");
 
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: [
+    "http://localhost:3000",
+    "https://your-campusiq-site.netlify.app"  // ← paste your actual Netlify URL
+  ]
+}));
 app.use(express.json());
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
@@ -133,7 +138,7 @@ RULES:
 // ═══════════════════════════════════════════════════════
 //  CHAT ENDPOINT
 // ═══════════════════════════════════════════════════════
-app.post("/chat", async (req, res) => {
+app.post("/api/chat", async (req, res) => {
   const userMessage = req.body.message?.trim();
   const history = req.body.history || [];
 
@@ -191,8 +196,9 @@ app.post("/chat", async (req, res) => {
 // ═══════════════════════════════════════════════════════
 //  START SERVER
 // ═══════════════════════════════════════════════════════
-app.listen(5000, () => {
-  console.log("✅ CampusIQ Server running on http://localhost:5000");
-  console.log(`📋 Loaded ${staffData.length} staff records (history-aware filtering)`);
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+  console.log(`✅ CampusIQ Server running on port ${PORT}`);
+  console.log(`📋 Loaded ${staffData.length} staff records`);
   console.log(`🤖 Using Groq — Llama 3.3 70B (Free)`);
 });
