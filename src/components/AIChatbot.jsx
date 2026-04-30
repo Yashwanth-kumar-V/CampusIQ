@@ -232,7 +232,7 @@ const c = {
     setShowFollowups(false);
 
     try {
-      const response = await fetch("http://localhost:5000/chat", {
+      const response = await fetch("https://campusiq-backend-iiqo.onrender.com", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
