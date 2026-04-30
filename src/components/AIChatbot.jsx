@@ -233,7 +233,7 @@ const c = {
     setShowFollowups(false);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/chat`, {
+      const response = await fetch("https://campusiq-backend-iiqo.onrender.com/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
