@@ -1,4 +1,3 @@
-import API_BASE_URL from "../config";
 import { useTheme } from './ThemeContext';
 import React, { useState, useRef, useEffect } from 'react';
 import {
