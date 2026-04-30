@@ -6,12 +6,8 @@ const Groq = require("groq-sdk");
 const staffData = require("./data/staffData");
 
 const app = express();
-app.use(cors({
-  origin: [
-    "http://localhost:3000",
-    "https://your-campusiq-site.netlify.app"  // ← paste your actual Netlify URL
-  ]
-}));
+// ✅ Allow all origins (simplest fix)
+app.use(cors());
 app.use(express.json());
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
