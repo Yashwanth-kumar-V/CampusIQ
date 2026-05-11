@@ -5,7 +5,7 @@ import {
   Volume2, VolumeX, Play, Trash2, Copy, CheckCheck, Sparkles, ChevronDown
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-
+import API_BASE_URL from '../config';
 const SUGGESTED_FOLLOWUPS = {
   document: [
     'What is the deadline for assignment submission?',
@@ -299,7 +299,7 @@ const handleSend = async (messageText) => {
     setShowFollowups(false);
 
     try {
-      const response = await fetch("https://campusiq-backend-iiqo.onrender.com/api/chat", {
+      const response = await fetch(`${API_BASE_URL}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
