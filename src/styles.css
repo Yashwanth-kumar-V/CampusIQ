@@ -943,10 +943,11 @@ body::before {
 ══════════════════════════════════════════ */
 .chatbot-container {
   max-width: 800px; margin: 0 auto;
-  height: calc(100vh - 140px);
+  height: calc(100vh - 116px);
   display: flex; flex-direction: column;
   background: var(--bg-card); border: 1px solid var(--border);
   border-radius: var(--radius-lg); overflow: hidden;
+  position: relative;
 }
 
 [data-theme="light"] .chatbot-container {

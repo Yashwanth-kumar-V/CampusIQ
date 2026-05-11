@@ -118,17 +118,17 @@ const AppRoutes = () => {
         />
 
         <Route
-          path="/chatbot"
-          element={
-            <ProtectedRoute>
-              <main className="main-content">
-                <div className="page-wrapper">
-                  <AIChatbot />
-                </div>
-              </main>
-            </ProtectedRoute>
-          }
-        />
+  path="/chatbot"
+  element={
+    <ProtectedRoute>
+      <main className="main-content" style={{ paddingBottom: 0, display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
+        <div className="page-wrapper" style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', paddingTop: 0 }}>
+          <AIChatbot />
+        </div>
+      </main>
+    </ProtectedRoute>
+  }
+/>
 
         <Route
           path="/settings"

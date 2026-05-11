@@ -45,14 +45,10 @@ const getFollowups = (query = '') => {
 
 // ── Voice preset profiles ──────────────────────────────────────
 const VOICE_PRESETS = [
-  { id: 'default',     label: '🤖 Default',        pitch: 1.0,  rate: 1.0,  lang: 'en-US', preferName: null },
-  { id: 'slow',        label: '🐢 Slow & Clear',   pitch: 0.9,  rate: 0.75, lang: 'en-US', preferName: null },
-  { id: 'fast',        label: '⚡ Fast',            pitch: 1.0,  rate: 1.4,  lang: 'en-US', preferName: null },
-  { id: 'deep',        label: '🎙️ Deep Male',      pitch: 0.5,  rate: 0.9,  lang: 'en-US', preferName: 'Google US English' },
-  { id: 'female',      label: '👩 Female',          pitch: 1.4,  rate: 1.0,  lang: 'en-US', preferName: 'Google US English' },
-  { id: 'british',     label: '🇬🇧 British',        pitch: 1.0,  rate: 1.0,  lang: 'en-GB', preferName: null },
-  { id: 'australian',  label: '🇦🇺 Australian',     pitch: 1.0,  rate: 1.0,  lang: 'en-AU', preferName: null },
-  { id: 'indian',      label: '🇮🇳 Indian',         pitch: 1.0,  rate: 1.0,  lang: 'en-IN', preferName: null },
+  { id: 'boy',    label: '👦 Boy (English)',   pitch: 0.7,  rate: 0.95, lang: 'en-US', preferGender: 'male'   },
+  { id: 'girl',   label: '👧 Girl (English)',  pitch: 1.3,  rate: 1.0,  lang: 'en-US', preferGender: 'female' },
+  { id: 'tamil',  label: '🇮🇳 Tamil Voice',    pitch: 1.0,  rate: 0.9,  lang: 'ta-IN', preferGender: null     },
+  { id: 'indian', label: '🇮🇳 Indian English', pitch: 1.0,  rate: 0.95, lang: 'en-IN', preferGender: null     },
 ];
 
 const AIChatbot = () => {
@@ -94,7 +90,7 @@ const c = {
 
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
-  const [isReadMode, setIsReadMode] = useState(true);
+  const [isReadMode, setIsReadMode] = useState(false);
   const [lastBotMessage, setLastBotMessage] = useState('');
   const [copiedId, setCopiedId] = useState(null);
   const [suggestedFollowups, setSuggestedFollowups] = useState(SUGGESTED_FOLLOWUPS.default);
@@ -162,31 +158,71 @@ const c = {
 
   // ── UPGRADED: speak — now uses selected voice preset ──
   const speak = (text) => {
-    window.speechSynthesis.cancel();
-    const speech = new SpeechSynthesisUtterance(text);
+  window.speechSynthesis.cancel();
 
+  const doSpeak = (voices) => {
     const preset = VOICE_PRESETS.find(v => v.id === selectedVoiceId) || VOICE_PRESETS[0];
+    const speech = new SpeechSynthesisUtterance(text);
     speech.lang  = preset.lang;
     speech.pitch = preset.pitch;
     speech.rate  = preset.rate;
 
-    // Try to match a preferred voice by name or language
-    if (availableVoices.length > 0) {
-      let matched = null;
-      if (preset.preferName) {
-        matched = availableVoices.find(v => v.name.includes(preset.preferName) && v.lang.startsWith(preset.lang.split('-')[0]));
+    let matched = null;
+
+    // Try exact lang match
+    const langVoices = voices.filter(v => v.lang === preset.lang);
+    if (langVoices.length > 0) {
+      if (preset.preferGender === 'female') {
+        matched = langVoices.find(v => /female|woman|girl|zira|susan|samantha|victoria|karen|moira/i.test(v.name))
+          || langVoices[0];
+      } else if (preset.preferGender === 'male') {
+        matched = langVoices.find(v => /male|man|boy|david|mark|alex|daniel|fred/i.test(v.name))
+          || langVoices[langVoices.length - 1];
+      } else {
+        matched = langVoices[0];
       }
-      if (!matched) {
-        matched = availableVoices.find(v => v.lang === preset.lang);
-      }
-      if (!matched) {
-        matched = availableVoices.find(v => v.lang.startsWith(preset.lang.split('-')[0]));
-      }
-      if (matched) speech.voice = matched;
     }
 
-    window.speechSynthesis.speak(speech);
+    // Fallback: lang prefix match (e.g. "en")
+    if (!matched) {
+      const prefix = preset.lang.split('-')[0];
+      matched = voices.find(v => v.lang.startsWith(prefix));
+    }
+
+    if (matched) speech.voice = matched;
+
+    // Chrome long-text fix: split into chunks
+    const MAX_CHARS = 200;
+    if (text.length <= MAX_CHARS) {
+      window.speechSynthesis.speak(speech);
+    } else {
+      const sentences = text.match(/[^.!?\n]+[.!?\n]*/g) || [text];
+      let chunk = '';
+      sentences.forEach((sentence, i) => {
+        chunk += sentence;
+        if (chunk.length >= MAX_CHARS || i === sentences.length - 1) {
+          const u = new SpeechSynthesisUtterance(chunk.trim());
+          u.lang  = speech.lang;
+          u.pitch = speech.pitch;
+          u.rate  = speech.rate;
+          u.voice = speech.voice;
+          window.speechSynthesis.speak(u);
+          chunk = '';
+        }
+      });
+    }
   };
+
+  // Voices may not be loaded yet — retry if empty
+  const voices = window.speechSynthesis.getVoices();
+  if (voices.length > 0) {
+    doSpeak(voices);
+  } else {
+    window.speechSynthesis.onvoiceschanged = () => {
+      doSpeak(window.speechSynthesis.getVoices());
+    };
+  }
+};
 
   // ── UNCHANGED: handleReplay ──
   const handleReplay = () => {
@@ -214,9 +250,40 @@ const c = {
   };
 
   // ── UNCHANGED: handleSend ──
-  const handleSend = async (messageText) => {
-    const text = typeof messageText === 'string' ? messageText : input;
-    if (!text.trim()) return;
+  // Simple spell-correct map for common student typos
+const SPELL_CORRECTIONS = {
+  'submition': 'submission', 'submisson': 'submission', 'assignement': 'assignment',
+  'assignmnet': 'assignment', 'proffessor': 'professor', 'proffesor': 'professor',
+  'scedule': 'schedule', 'schedul': 'schedule', 'timetabel': 'timetable',
+  'atendance': 'attendance', 'attendence': 'attendance', 'attendnce': 'attendance',
+  'certifcate': 'certificate', 'certificat': 'certificate', 'certifikate': 'certificate',
+  'bonafied': 'bonafide', 'bonafied': 'bonafide', 'bona fide': 'bonafide',
+  'documnet': 'document', 'docuemnt': 'document', 'documant': 'document',
+  'libary': 'library', 'libaray': 'library', 'labratory': 'laboratory',
+  'principel': 'principal', 'pricipal': 'principal', 'principla': 'principal',
+  'departement': 'department', 'depratment': 'department', 'deparment': 'department',
+  'semister': 'semester', 'semeter': 'semester', 'semster': 'semester',
+  'exem': 'exam', 'exame': 'exam', 'examn': 'exam',
+  'feee': 'fee', 'fes': 'fees', 'collage': 'college', 'colege': 'college',
+  'hod': 'HOD', 'Hod': 'HOD', 'mtech': 'M.Tech', 'btech': 'B.Tech',
+  'leav': 'leave', 'leve': 'leave', 'internhship': 'internship', 'internsip': 'internship',
+  'wher': 'where', 'whe': 'where', 'hw': 'how', 'wat': 'what', 'wen': 'when',
+  'pls': 'please', 'plz': 'please', 'plsss': 'please', 'thx': 'thanks',
+  'marksheet': 'marksheet', 'markshhet': 'marksheet', 'markshit': 'marksheet',
+  'revaluation': 'revaluation', 'revaluaiton': 'revaluation',
+};
+
+const autoCorrect = (str) => {
+  return str.split(' ').map(word => {
+    const lower = word.toLowerCase();
+    return SPELL_CORRECTIONS[lower] || SPELL_CORRECTIONS[word] || word;
+  }).join(' ');
+};
+
+const handleSend = async (messageText) => {
+  const rawText = typeof messageText === 'string' ? messageText : input;
+  const text = autoCorrect(rawText.trim());
+  if (!text) return;
 
     const userMessage = {
       id: messages.length + 1,
@@ -304,14 +371,14 @@ const c = {
 
       {/* ── Header ── */}
       <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: '16px 24px',
-        background: 'rgba(255,255,255,0.03)',
-        borderBottom: '1px solid rgba(255,255,255,0.07)',
-        flexShrink: 0,
-      }}>
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  padding: '16px 24px',
+  background: c.headerBg,
+  borderBottom: `1px solid ${c.headerBorder}`,
+  flexShrink: 0,
+}}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
           {/* Bot avatar with pulse ring */}
           <div style={{ position: 'relative' }}>
@@ -331,8 +398,8 @@ const c = {
             }} />
           </div>
           <div>
-            <h2 style={{ color: '#f1f5f9', fontSize: '16px', fontWeight: 700, margin: 0 }}>CampusIQ Assistant</h2>
-            <p style={{ color: '#6b7280', fontSize: '12px', margin: 0, display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <h2 style={{ color: c.botName, fontSize: '16px', fontWeight: 700, margin: 0 }}>CampusIQ Assistant</h2>
+            <p style={{ color: c.botSub, fontSize: '12px', margin: 0, display: 'flex', alignItems: 'center', gap: '4px' }}>
               <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#22c55e', display: 'inline-block' }} />
               Online · AI-powered campus helper
             </p>
@@ -466,21 +533,21 @@ const c = {
 
       {/* ── Quick Actions Bar — UNCHANGED ── */}
       <div style={{
-        display: 'flex', gap: '8px', padding: '12px 24px',
-        borderBottom: '1px solid rgba(255,255,255,0.05)',
-        overflowX: 'auto', flexShrink: 0,
-        scrollbarWidth: 'none',
-      }}>
+  display: 'flex', gap: '8px', padding: '12px 24px',
+  borderBottom: `1px solid ${c.headerBorder}`,
+  overflowX: 'auto', flexShrink: 0,
+  scrollbarWidth: 'none',
+}}>
         {quickActions.map((action, index) => (
           <button
             key={index}
             onClick={() => handleQuickAction(action.query)}
             style={{
-              display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap',
-              padding: '7px 14px', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.1)',
-              background: 'rgba(255,255,255,0.04)', color: '#9ca3af',
-              fontSize: '12px', fontWeight: 500, cursor: 'pointer', transition: 'all 0.2s',
-            }}
+  display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap',
+  padding: '7px 14px', borderRadius: '20px', border: `1px solid ${c.quickBtnBorder}`,
+  background: c.quickBtnBg, color: c.quickBtnColor,
+  fontSize: '12px', fontWeight: 500, cursor: 'pointer', transition: 'all 0.2s',
+}}
             onMouseEnter={e => { e.currentTarget.style.background = 'rgba(99,102,241,0.15)'; e.currentTarget.style.color = '#a5b4fc'; e.currentTarget.style.borderColor = 'rgba(99,102,241,0.3)'; }}
             onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; e.currentTarget.style.color = '#9ca3af'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'; }}
           >
@@ -531,17 +598,17 @@ const c = {
                 <div style={{
                   padding: '12px 16px', borderRadius: msg.type === 'bot' ? '4px 16px 16px 16px' : '16px 4px 16px 16px',
                   background: msg.type === 'bot'
-                    ? 'rgba(255,255,255,0.06)'
-                    : 'linear-gradient(135deg, rgba(99,102,241,0.35), rgba(139,92,246,0.3))',
-                  border: msg.type === 'bot'
-                    ? '1px solid rgba(255,255,255,0.08)'
-                    : '1px solid rgba(99,102,241,0.3)',
+  ? c.botBubbleBg
+  : 'linear-gradient(135deg, rgba(99,102,241,0.35), rgba(139,92,246,0.3))',
+border: msg.type === 'bot'
+  ? `1px solid ${c.botBubbleBorder}`
+  : '1px solid rgba(99,102,241,0.3)',
                   position: 'relative',
                 }}>
                   <p style={{
-                    color: '#e2e8f0', fontSize: '14px', lineHeight: 1.65,
-                    margin: 0, whiteSpace: 'pre-line',
-                  }}>{msg.content}</p>
+  color: c.msgText, fontSize: '14px', lineHeight: 1.65,
+  margin: 0, whiteSpace: 'pre-line',
+}}>{msg.content}</p>
 
                   {/* Copy button on bot messages */}
                   {msg.type === 'bot' && (
@@ -563,7 +630,7 @@ const c = {
                 </div>
 
                 <span style={{
-                  color: '#4b5563', fontSize: '11px', marginTop: '4px',
+                  color: c.timestamp, fontSize: '11px', marginTop: '4px',
                   display: 'flex', alignItems: 'center', gap: '4px',
                 }}>
                   <Clock size={10} />
@@ -650,28 +717,28 @@ const c = {
 
       {/* ── Input Bar — UNCHANGED ── */}
       <div style={{
-        padding: '16px 24px',
-        borderTop: '1px solid rgba(255,255,255,0.07)',
-        background: 'rgba(255,255,255,0.02)',
-        flexShrink: 0,
-      }}>
+  padding: '16px 24px',
+  borderTop: `1px solid ${c.inputBarBorder}`,
+  background: c.inputBarBg,
+  flexShrink: 0,
+}}>
         <form onSubmit={handleFormSubmit}>
           <div style={{
-            display: 'flex', alignItems: 'center', gap: '10px',
-            background: 'rgba(255,255,255,0.05)',
-            border: '1px solid rgba(255,255,255,0.1)',
-            borderRadius: '14px', padding: '6px 6px 6px 16px',
-            transition: 'border-color 0.2s',
-          }}>
+  display: 'flex', alignItems: 'center', gap: '10px',
+  background: c.inputBoxBg,
+  border: `1px solid ${c.inputBoxBorder}`,
+  borderRadius: '14px', padding: '6px 6px 6px 16px',
+  transition: 'border-color 0.2s',
+}}>
             <input
               type="text"
               placeholder="Ask me anything about campus..."
               value={input}
               onChange={(e) => setInput(e.target.value)}
               style={{
-                flex: 1, background: 'transparent', border: 'none', outline: 'none',
-                color: '#e2e8f0', fontSize: '14px',
-              }}
+  flex: 1, background: 'transparent', border: 'none', outline: 'none',
+  color: c.inputColor, fontSize: '14px',
+}}
             />
 
             <button
@@ -707,8 +774,8 @@ const c = {
         </form>
 
         <p style={{
-          textAlign: 'center', color: '#374151', fontSize: '11px', marginTop: '10px'
-        }}>
+  textAlign: 'center', color: c.disclaimer, fontSize: '11px', marginTop: '10px'
+}}>
           CampusIQ AI · Responses may vary · Always verify with official sources
         </p>
       </div>

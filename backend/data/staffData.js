@@ -36,7 +36,12 @@ const staffData = [
       "Conference Attendance Approval",
       "Student Club Activity Approval",
       "Internship Permission Letter (CSE)",
-      "Fee Waiver Request (HOD Recommendation)"
+      "Fee Waiver Request (HOD Recommendation)",
+      "Semester Registration Issue",
+"Course Drop Request",
+"Lateral Entry Admission Query",
+"Change of Elective Request",
+"Student Project Team Formation Approval",
     ],
     avatar: "AS", status: "available"
   },
@@ -566,7 +571,16 @@ const staffData = [
       "Degree Certificate Application",
       "Migration Certificate Request (Exam Cell)",
       "Examination Seating Arrangement Query",
-      "Answer Script Photocopy Request"
+      "Answer Script Photocopy Request",
+      "Internal Assessment Marks Query",
+      "Grade Improvement Request",
+      "Exam Centre Change Request",
+      "Student Copy of Answer Script",
+      "NBA/NAAC Document Request",
+      "CGPA Calculation Query",
+      "Backlog Clearance Certificate",
+      "Transfer Certificate Request",
+      "Course Completion Certificate",
     ],
     avatar: "DK", status: "available"
   },
@@ -604,7 +618,13 @@ const staffData = [
       "Soft Skills Training Attendance",
       "LinkedIn Profile Submission",
       "AMCAT / COCUBES Score Card",
-      "Higher Studies Intent Declaration"
+      "Higher Studies Intent Declaration",
+      "On-Campus Drive Eligibility Query",
+"Placement Statistics Request",
+"Company Blacklist Query",
+"Job Offer Acceptance Form",
+"Salary Negotiation Guidance Form",
+"PPO (Pre-Placement Offer) Acknowledgement",
     ],
     avatar: "AR2", status: "available"
   },
@@ -642,7 +662,12 @@ const staffData = [
       "Uniform Exemption Request",
       "Personal Difficulties Declaration",
       "Welfare Scheme Enrolment Form",
-      "Community Service Report"
+      "Community Service Report",
+      "NCC/NSS Certificate Request",
+"Sports Day Participation Form",
+"Blood Donation Certificate",
+"Hostel Application Form",
+"Transport/Bus Pass Application",
     ],
     avatar: "KST", status: "available"
   },
@@ -678,7 +703,52 @@ const staffData = [
       "Emergency Emotional Support Request"
     ],
     avatar: "SR2", status: "available"
-  }
+  },
+  {
+  id: "ADMIN009",
+  name: "Mr. Ramesh Babu K",
+  prefix: "Mr.",
+  role: "Academic Section Officer",
+  department: "Academic Section",
+  subjects: [],
+  age: 45, doj: "10-06-2011",
+  contact: "9876511009",
+  email: "ramesh.babu@campus.edu",
+  room: "Admin Block 101",
+  officeHours: "Mon–Fri: 9AM – 5PM",
+  freeTime: { Monday: "10AM - 12PM", Tuesday: "10AM - 12PM", Wednesday: "10AM - 12PM", Thursday: "10AM - 12PM", Friday: "10AM - 12PM" },
+  subjects_code: [],
+  submissions: [
+    "Semester Registration Form",
+    "Course Registration Form",
+    "Timetable Query",
+    "Academic Calendar Query",
+    "Backlog Subject Registration",
+    "Lateral Entry Verification",
+    "Transfer Certificate Application",
+    "Study Certificate Request",
+    "Conduct Certificate Request",
+    "Course Completion Certificate",
+    "Attendance Shortage Warning Letter",
+    "Detained Student List Query",
+    "College Leaving Certificate",
+    "Migration Certificate Request",
+    "Original Certificate Collection",
+    "Original Document Submission",
+    "TC (Transfer Certificate) Application",
+    "Name Correction in Records",
+    "Date of Birth Correction Request",
+    "Academic Transcript Request",
+    "Medium of Instruction Certificate",
+    "Consolidated Grade Sheet Request",
+    "Rank Certificate Request",
+    "Class Rank Query",
+    "CGPA to Percentage Conversion Certificate"
+  ],
+  avatar: "RBK", status: "available"
+},
+
+  
 ];
 
 // ─── Helper utilities ──────────────────────────────────────────
