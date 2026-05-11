@@ -1,3 +1,4 @@
+import AnimatedBackground from './AnimatedBackground';
 import React, { useState, useRef, useEffect } from 'react';
 import {
   Wrench, Plus, Clock, CheckCircle2, AlertCircle, X,
@@ -337,6 +338,7 @@ const ServiceRequests = () => {
   const roleLabel       = isSolver ? 'Faculty / Staff Portal' : 'My Requests';
 
   return (
+     <AnimatedBackground dark={isDark}>
     <div className="service-requests">
       {/* ── Page Header ── */}
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12, marginBottom: 24 }}>
@@ -900,6 +902,7 @@ const ServiceRequests = () => {
         )}
       </AnimatePresence>
     </div>
+    </AnimatedBackground>
   );
 };
 

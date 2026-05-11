@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { useTheme } from './ThemeContext';
+import AnimatedBackground from './AnimatedBackground';
 import {
   Search, Navigation, Layers, Building2, BookOpen,
   Home, Trophy, GraduationCap, X
@@ -162,6 +164,7 @@ const ROADS = [
 ];
 
 export default function CampusMap() {
+  const { isDark } = useTheme();
   const [activeFilter, setActiveFilter] = useState('all');
   const [searchQuery,  setSearchQuery]  = useState('');
   const [selectedId,   setSelectedId]   = useState(null);
@@ -175,6 +178,7 @@ export default function CampusMap() {
   const selected = LOCATIONS.find((l) => l.id === selectedId);
 
   return (
+    <AnimatedBackground dark={isDark}>
     <div style={S.root}>
       {/* ── HEADER ── */}
       <div style={S.header}>
@@ -460,6 +464,7 @@ export default function CampusMap() {
         </div>
       </div>
     </div>
+    </AnimatedBackground>
   );
 }
 
