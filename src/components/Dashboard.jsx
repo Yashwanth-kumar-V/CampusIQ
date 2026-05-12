@@ -1,3 +1,4 @@
+import AnimatedBackground from './AnimatedBackground';
 import { useTheme } from './ThemeContext';
 import React, { useState, useEffect } from 'react';
 import {
@@ -328,6 +329,7 @@ const Dashboard = () => {
   };
 
   return (
+    <AnimatedBackground dark={isDark}>
     <div style={{ padding: '24px 32px 48px', maxWidth: '1280px', margin: '0 auto' }}>
 
       {/* ── Welcome header ──────────────────── */}
@@ -399,6 +401,8 @@ const Dashboard = () => {
         <StatCard icon={CheckCircle2} label="Resolved Requests"    value={stats.resolved}      color="green"  loading={statsLoading} delay={0.12} />
         <StatCard icon={Bell}         label="Campus Announcements" value={stats.announcements} color="purple" loading={statsLoading} delay={0.18} />
       </div>
+
+      
 
       {/* ── Feature Cards ──────────────────────── */}
       <div style={{ marginBottom: '28px' }}>
@@ -639,6 +643,7 @@ const Dashboard = () => {
         }
       `}</style>
     </div>
+    </AnimatedBackground>
   );
 };
 
