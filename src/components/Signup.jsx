@@ -19,12 +19,17 @@ const StrengthBar = ({ password, isDark }) => {
   ) : null;
 };
 
+const ROLE_CODES = {
+  Faculty: '2026',
+  Staff:   '2026',
+};
+
 const Signup = () => {
   const navigate = useNavigate();
   const { signup } = useAuth();
   const { isDark, toggleTheme } = useTheme();
 
-  const [form, setForm]       = useState({ name:'', email:'', password:'', confirm:'', role:'Student' });
+  const [form, setForm] = useState({ name:'', email:'', password:'', confirm:'', role:'Student', code:'' });
   const [showPw, setShowPw]   = useState(false);
   const [error, setError]     = useState('');
   const [loading, setLoading] = useState(false);
@@ -68,6 +73,10 @@ const Signup = () => {
     if (!form.name || !form.email || !form.password) { setError('Please fill in all required fields'); return; }
     if (form.password !== form.confirm) { setError('Passwords do not match'); return; }
     if (form.password.length < 6) { setError('Password must be at least 6 characters'); return; }
+    if (form.role !== 'Student') {
+    if (!form.code) { setError(`Access code is required for ${form.role} accounts`); return; }
+    if (form.code !== ROLE_CODES[form.role]) { setError(`Invalid access code for ${form.role}`); return; }
+}
     setLoading(true);
     try {
       await signup({ name:form.name, email:form.email, password:form.password, role:form.role });
@@ -81,6 +90,7 @@ const Signup = () => {
 
   return (
     <AnimatedBackground dark={isDark}>
+      
 
       {/* Theme toggle */}
       <motion.button
@@ -98,8 +108,23 @@ const Signup = () => {
         {isDark ? <Sun size={16}/> : <Moon size={16}/>}
       </motion.button>
 
+      
+
       {/* Card */}
-      <motion.div
+      {/* Center wrapper */}
+<div
+  style={{
+    minHeight: '100vh',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '24px',
+    overflowY: 'auto',
+    boxSizing: 'border-box',
+  }}
+>
+  {/* Card */}
+  <motion.div
         initial={{ opacity:0, y:28, scale:0.97 }}
         animate={{ opacity:1, y:0, scale:1 }}
         transition={{ duration:0.5, ease:'easeOut' }}
@@ -114,6 +139,7 @@ const Signup = () => {
           transition:'background 0.3s, border-color 0.3s, box-shadow 0.3s',
         }}
       >
+        
         {/* Logo */}
         <div style={{ display:'flex', flexDirection:'column', alignItems:'center', marginBottom:24 }}>
           <motion.div whileHover={{ rotate:12, scale:1.08 }}
@@ -185,6 +211,24 @@ const Signup = () => {
             <option value="Staff">Staff</option>
           </select>
 
+          {/* Access code — only shown for Faculty/Staff */}
+{form.role !== 'Student' && (
+  <div style={{ position:'relative' }}>
+    <div style={{ position:'absolute', left:14, top:'50%', transform:'translateY(-50%)', color: c.iconColor, pointerEvents:'none' }}>
+      <Lock size={16}/>
+    </div>
+    <input
+      type="text"
+      placeholder={`Enter ${form.role} access code`}
+      value={form.code}
+      onChange={update('code')}
+      style={inputStyle}
+      onFocus={e => e.target.style.borderColor='rgba(99,102,241,0.5)'}
+      onBlur={e => e.target.style.borderColor=c.inputBorder}
+    />
+  </div>
+)}
+
           {/* Password */}
           <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
             <div style={{ position:'relative' }}>
@@ -236,6 +280,7 @@ const Signup = () => {
           <Link to="/login" style={{ color:'#818cf8', fontWeight:600, textDecoration:'none' }}>Sign in</Link>
         </p>
       </motion.div>
+      </div>
     </AnimatedBackground>
   );
 };

@@ -21,6 +21,7 @@ import {
   onSnapshot,
   serverTimestamp,
   arrayUnion,
+  getDocs,
 } from 'firebase/firestore';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -148,7 +149,9 @@ const ServiceRequests = () => {
   };
 
   // role check
-  const isSolver = user?.role === 'Faculty' || user?.role === 'Staff';
+  const isFaculty = user?.role === 'Faculty';
+  const isStaff   = user?.role === 'Staff';
+  const isSolver  = isFaculty || isStaff;
 
   const [showForm, setShowForm]               = useState(false);
   const [activeTab, setActiveTab]             = useState('all');
@@ -159,6 +162,8 @@ const ServiceRequests = () => {
   const [detailsForm, setDetailsForm]         = useState({ feedback: '', rating: 0, hoveredRating: 0 });
   const [chatInput, setChatInput]             = useState('');
   const [completionNote, setCompletionNote]   = useState('');
+  const [staffList, setStaffList]         = useState([]);
+  const [selectedStaff, setSelectedStaff] = useState('');
   const chatEndRef = useRef(null);
 
   const [newRequest, setNewRequest] = useState({
@@ -167,6 +172,22 @@ const ServiceRequests = () => {
 
   const categories = ['Maintenance', 'IT Support', 'Plumbing', 'Electrical', 'Cleaning', 'Security'];
 
+  // ── Notification helper ───────────────────────────────────────────
+const sendNotification = async (targetUid, { type, title, body }) => {
+  if (!targetUid) return;
+  try {
+    await addDoc(collection(db, 'users', targetUid, 'notifications'), {
+      type,
+      title,
+      body,
+      read: false,
+      createdAt: serverTimestamp(),
+    });
+  } catch (err) {
+    console.error('Notification error:', err);
+  }
+};
+
   // ── Firestore real-time listener ─────────────────────────────────────────
   useEffect(() => {
   if (!user || !user.uid) return; // 🔥 FIX
@@ -174,17 +195,25 @@ const ServiceRequests = () => {
   setLoading(true);
 
   let q;
-  if (isSolver) {
-    q = query(
-      collection(db, 'serviceRequests'),
-      orderBy('createdAt', 'desc')
-    );
-  } else {
-    q = query(
-      collection(db, 'serviceRequests'),
-      where('submittedByUid', '==', user.uid)
-    );
-  }
+if (isFaculty) {
+  // Faculty sees all requests
+  q = query(
+    collection(db, 'serviceRequests'),
+    orderBy('createdAt', 'desc')
+  );
+} else if (isStaff) {
+  // Staff sees only requests assigned to them
+  q = query(
+    collection(db, 'serviceRequests'),
+    where('assignedToStaffUid', '==', user.uid)
+  );
+} else {
+  // Student sees only their own
+  q = query(
+    collection(db, 'serviceRequests'),
+    where('submittedByUid', '==', user.uid)
+  );
+}
 
   const unsub = onSnapshot(
     q,
@@ -209,10 +238,30 @@ const ServiceRequests = () => {
   return () => unsub();
 }, [user?.uid, isSolver]); // 🔥 FIX
 
+  // Fetch all Staff users (Faculty needs this to assign)
+useEffect(() => {
+  if (!isFaculty) return;
+  const fetchStaff = async () => {
+    const q = query(
+      collection(db, 'users'),
+      where('role', '==', 'Staff')
+    );
+    const snap = await getDocs(q);
+    setStaffList(snap.docs.map(d => ({ uid: d.id, ...d.data() })));
+  };
+  fetchStaff();
+}, [isFaculty]);
+
   // Scroll chat to bottom
   useEffect(() => {
     if (chatEndRef.current) chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
   }, [selectedRequest?.chat]);
+
+  useEffect(() => {
+  if (!selectedRequest) return;
+  const updated = requests.find(r => r.id === selectedRequest.id);
+  if (updated) setSelectedRequest(updated);
+  }, [requests]);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 
@@ -244,6 +293,20 @@ const ServiceRequests = () => {
 
     try {
       await addDoc(collection(db, 'serviceRequests'), payload);
+
+// Notify all faculty/staff
+const facultyQuery = query(
+  collection(db, 'users'),
+  where('role', 'in', ['Faculty', 'Staff'])
+);
+const facultySnap = await getDocs(facultyQuery);
+facultySnap.forEach(facultyDoc => {
+  sendNotification(facultyDoc.id, {
+    type: 'maintenance',
+    title: `New Request: ${newRequest.title}`,
+    body: `${user.name || 'A student'} submitted a ${newRequest.category} request at ${newRequest.location}.`,
+  });
+});
       setShowForm(false);
       setNewRequest({ title: '', category: '', priority: 'medium', location: '', description: '' });
     } catch (err) {
@@ -280,11 +343,17 @@ const ServiceRequests = () => {
     const today = new Date().toISOString().split('T')[0];
     const logEntry = { date: today, status: 'in-progress', note: `${user.name} (${user.role}) picked up the issue.` };
     await updateRequestField(selectedRequest.id, {
-      assignedTo: user.name,
-      assignedToUid: user.uid,
-      status: 'in-progress',
-      progressLog: arrayUnion(logEntry),
-    });
+  assignedTo: user.name,
+  assignedToUid: user.uid,
+  status: 'in-progress',
+  progressLog: arrayUnion(logEntry),
+});
+
+sendNotification(selectedRequest.submittedByUid, {
+  type: 'maintenance',
+  title: `Your request is in progress`,
+  body: `${user.name} has picked up your request: "${selectedRequest.title}"`,
+});
   };
 
   const handleMarkCompleted = async () => {
@@ -292,10 +361,16 @@ const ServiceRequests = () => {
     const today = new Date().toISOString().split('T')[0];
     const note = completionNote.trim() || 'Issue resolved by faculty/staff.';
     await updateRequestField(selectedRequest.id, {
-      status: 'completed',
-      completionNote: note,
-      progressLog: arrayUnion({ date: today, status: 'completed', note }),
-    });
+  status: 'completed',
+  completionNote: note,
+  progressLog: arrayUnion({ date: today, status: 'completed', note }),
+});
+
+sendNotification(selectedRequest.submittedByUid, {
+  type: 'maintenance',
+  title: `Request Completed: "${selectedRequest.title}"`,
+  body: note,
+});
   };
 
   const handleMarkNotCompleted = async () => {
@@ -307,6 +382,39 @@ const ServiceRequests = () => {
     });
   };
 
+  const handleAssignToStaff = async () => {
+  if (!selectedRequest || !selectedStaff || !isFaculty) return;
+  const staffMember = staffList.find(s => s.uid === selectedStaff);
+  if (!staffMember) return;
+  const today = new Date().toISOString().split('T')[0];
+  const logEntry = {
+    date: today,
+    status: 'in-progress',
+    note: `Assigned to ${staffMember.name} by Faculty ${user.name}.`,
+  };
+  await updateRequestField(selectedRequest.id, {
+    assignedToStaff:    staffMember.name,
+    assignedToStaffUid: staffMember.uid,
+    facultyName:        user.name,
+    facultyUid:         user.uid,
+    status:             'in-progress',
+    progressLog:        arrayUnion(logEntry),
+  });
+  // Notify the assigned staff
+  sendNotification(staffMember.uid, {
+    type:  'maintenance',
+    title: `New task assigned: "${selectedRequest.title}"`,
+    body:  `Faculty ${user.name} assigned you a ${selectedRequest.category} request at ${selectedRequest.location}.`,
+  });
+  // Notify the student
+  sendNotification(selectedRequest.submittedByUid, {
+    type:  'maintenance',
+    title: `Your request is being handled`,
+    body:  `${staffMember.name} has been assigned to your request: "${selectedRequest.title}"`,
+  });
+  setSelectedStaff('');
+};
+
   const handleSendChat = async () => {
     if (!chatInput.trim() || !selectedRequest || !user) return;
     const newMsg = {
@@ -316,9 +424,28 @@ const ServiceRequests = () => {
       ts: new Date().toISOString(),
     };
     await updateRequestField(selectedRequest.id, {
-      chat: arrayUnion(newMsg),
+  chat: arrayUnion(newMsg),
+});
+setChatInput('');
+
+// Notify the other party
+if (isSolver) {
+  // Faculty sent → notify the student
+  sendNotification(selectedRequest.submittedByUid, {
+    type: 'general',
+    title: `Reply on "${selectedRequest.title}"`,
+    body: `${user.name || 'Faculty'}: ${chatInput.trim()}`,
+  });
+} else {
+  // Student sent → notify assigned faculty (if any)
+  if (selectedRequest.assignedToUid) {
+    sendNotification(selectedRequest.assignedToUid, {
+      type: 'general',
+      title: `Student replied on "${selectedRequest.title}"`,
+      body: `${user.name || 'Student'}: ${chatInput.trim()}`,
     });
-    setChatInput('');
+  }
+}
   };
 
   const handleSubmitFeedback = async () => {
@@ -384,16 +511,26 @@ const ServiceRequests = () => {
       </div>
 
       {/* ── Faculty: banner hint ── */}
-      {isSolver && (
-        <div style={{
-          marginBottom: 16, padding: '10px 16px',
-          background: 'rgba(6,182,212,0.08)', border: '1px solid rgba(6,182,212,0.2)',
-          borderRadius: 10, color: '#67e8f9', fontSize: 13,
-          display: 'flex', alignItems: 'center', gap: 8,
-        }}>
-          <Bell size={14}/> You can take ownership of pending issues, chat with students, and mark completion below.
-        </div>
-      )}
+      {isFaculty && (
+  <div style={{
+    marginBottom: 16, padding: '10px 16px',
+    background: 'rgba(6,182,212,0.08)', border: '1px solid rgba(6,182,212,0.2)',
+    borderRadius: 10, color: '#67e8f9', fontSize: 13,
+    display: 'flex', alignItems: 'center', gap: 8,
+  }}>
+    <Bell size={14}/> Review student requests and assign them to the appropriate staff member.
+  </div>
+)}
+{isStaff && (
+  <div style={{
+    marginBottom: 16, padding: '10px 16px',
+    background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)',
+    borderRadius: 10, color: '#fbbf24', fontSize: 13,
+    display: 'flex', alignItems: 'center', gap: 8,
+  }}>
+    <Bell size={14}/> These are requests assigned to you. Resolve them and mark as complete.
+  </div>
+)}
 
       {/* ── Loading ── */}
       {loading && (
@@ -424,7 +561,7 @@ const ServiceRequests = () => {
                 style={{ position: 'relative', cursor: 'default' }}
               >
                 {/* Faculty: unassigned badge */}
-                {isSolver && !request.assignedTo && request.status === 'pending' && (
+                {isFaculty && !request.assignedToStaff && request.status === 'pending' && (
                   <div style={{
                     position: 'absolute', top: 12, right: 12,
                     background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.35)',
@@ -488,15 +625,15 @@ const ServiceRequests = () => {
                   {!isSolver && request.status === 'pending' && (
                     <button className="btn-text danger">Cancel</button>
                   )}
-                  {isSolver && !request.assignedTo && request.status === 'pending' && (
-                    <button
-                      className="btn-text"
-                      style={{ color: '#06b6d4' }}
-                      onClick={() => { openDetails(request); }}
-                    >
-                      <ChevronRight size={13}/> Take Issue
-                    </button>
-                  )}
+                  {isFaculty && !request.assignedToStaff && request.status === 'pending' && (
+                  <button
+                    className="btn-text"
+                    style={{ color: '#06b6d4' }}
+                    onClick={() => openDetails(request)}
+                  >
+                    <ChevronRight size={13}/> Assign Staff
+                  </button>
+                )}
                 </div>
               </motion.div>
             );
@@ -650,100 +787,153 @@ const ServiceRequests = () => {
                   <ProgressTimeline log={selectedRequest.progressLog || []}/>
                 </div>
 
-                {/* ── Faculty Actions ── */}
-                {isSolver && (
-                  <div style={{
-                    background: 'rgba(6,182,212,0.06)', border: '1px solid rgba(6,182,212,0.18)',
-                    borderRadius: 12, padding: 16, display: 'flex', flexDirection: 'column', gap: 12,
-                  }}>
-                    <p style={{ color: '#67e8f9', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6, margin: 0 }}>
-                      <ShieldCheck size={14}/> Faculty Actions
-                    </p>
+                {/* ── Faculty Actions: Assign to Staff ── */}
+{isFaculty && (
+  <div style={{
+    background: 'rgba(6,182,212,0.06)', border: '1px solid rgba(6,182,212,0.18)',
+    borderRadius: 12, padding: 16, display: 'flex', flexDirection: 'column', gap: 12,
+  }}>
+    <p style={{ color: '#67e8f9', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6, margin: 0 }}>
+      <ShieldCheck size={14}/> Faculty — Assign to Staff
+    </p>
 
-                    {/* Take request */}
-                    {!selectedRequest.assignedTo && selectedRequest.status === 'pending' && (
-                      <button
-                        onClick={handleTakeRequest}
-                        style={{
-                          padding: '10px 16px', borderRadius: 9, border: '1px solid rgba(6,182,212,0.35)',
-                          background: 'rgba(6,182,212,0.12)', color: '#67e8f9',
-                          fontWeight: 700, fontSize: 13, cursor: 'pointer',
-                          display: 'flex', alignItems: 'center', gap: 6, transition: 'all 0.2s',
-                        }}>
-                        <ShieldCheck size={14}/> Take This Request
-                      </button>
-                    )}
+    {/* Already assigned info */}
+    {selectedRequest.assignedToStaff ? (
+      <div style={{
+        padding: '10px 12px', background: 'rgba(34,197,94,0.07)',
+        border: '1px solid rgba(34,197,94,0.2)', borderRadius: 8,
+      }}>
+        <p style={{ color: '#4ade80', fontSize: 12, fontWeight: 700, margin: '0 0 4px', display: 'flex', alignItems: 'center', gap: 4 }}>
+          <CheckCircle2 size={11}/> Assigned to: {selectedRequest.assignedToStaff}
+        </p>
+        <p style={{ color: '#9ca3af', fontSize: 11, margin: 0 }}>
+          You can reassign below if needed.
+        </p>
+      </div>
+    ) : (
+      <p style={{ color: '#9ca3af', fontSize: 12, margin: 0 }}>
+        This request has not been assigned to any staff yet.
+      </p>
+    )}
 
-                    {/* Completion note */}
-                    {selectedRequest.status !== 'completed' && (
-                      <div>
-                        <label style={{ color: '#9ca3af', fontSize: 11, marginBottom: 5, display: 'block' }}>
-                          Completion Description (shown to student)
-                        </label>
-                        <textarea
-                          rows={2}
-                          placeholder="Describe what was done to resolve this issue..."
-                          value={completionNote}
-                          onChange={e => setCompletionNote(e.target.value)}
-                          style={{
-                            width: '100%', background: 'rgba(255,255,255,0.05)',
-                            border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8,
-                            color: '#e5e7eb', fontSize: 13, padding: '9px 12px',
-                            resize: 'vertical', outline: 'none', fontFamily: 'inherit',
-                            boxSizing: 'border-box',
-                          }}
-                        />
-                      </div>
-                    )}
+    {/* Staff dropdown */}
+    <div>
+      <label style={{ color: '#9ca3af', fontSize: 11, marginBottom: 5, display: 'block' }}>
+        Select Staff Member
+      </label>
+      <select
+        value={selectedStaff}
+        onChange={e => setSelectedStaff(e.target.value)}
+        style={{
+          width: '100%', background: 'rgba(255,255,255,0.05)',
+          border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8,
+          color: selectedStaff ? '#e5e7eb' : '#6b7280',
+          fontSize: 13, padding: '9px 12px', outline: 'none',
+          fontFamily: 'inherit', boxSizing: 'border-box', cursor: 'pointer',
+        }}
+      >
+        <option value="">-- Choose a staff member --</option>
+        {staffList.map(s => (
+          <option key={s.uid} value={s.uid}>{s.name}</option>
+        ))}
+      </select>
+    </div>
 
-                    {/* Show saved completion note */}
-                    {selectedRequest.completionNote && (
-                      <div style={{
-                        padding: '10px 12px', background: 'rgba(34,197,94,0.07)',
-                        border: '1px solid rgba(34,197,94,0.2)', borderRadius: 8,
-                      }}>
-                        <p style={{ color: '#4ade80', fontSize: 11, fontWeight: 700, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
-                          <CheckCircle2 size={11}/> Resolution Note
-                        </p>
-                        <p style={{ color: '#9ca3af', fontSize: 12, margin: 0 }}>{selectedRequest.completionNote}</p>
-                      </div>
-                    )}
+    <button
+      onClick={handleAssignToStaff}
+      disabled={!selectedStaff}
+      style={{
+        padding: '10px 16px', borderRadius: 9,
+        border: '1px solid rgba(6,182,212,0.35)',
+        background: selectedStaff ? 'rgba(6,182,212,0.15)' : 'rgba(6,182,212,0.05)',
+        color: selectedStaff ? '#67e8f9' : '#374151',
+        fontWeight: 700, fontSize: 13,
+        cursor: selectedStaff ? 'pointer' : 'not-allowed',
+        display: 'flex', alignItems: 'center', gap: 6, transition: 'all 0.2s',
+      }}
+    >
+      <ShieldCheck size={14}/>
+      {selectedRequest.assignedToStaff ? 'Reassign to Staff' : 'Assign to Staff'}
+    </button>
+  </div>
+)}
 
-                    {/* Mark buttons */}
-                    <div style={{ display: 'flex', gap: 10 }}>
-                      <button
-                        onClick={handleMarkCompleted}
-                        disabled={selectedRequest.status === 'completed'}
-                        style={{
-                          flex: 1, padding: '10px', borderRadius: 8,
-                          cursor: selectedRequest.status === 'completed' ? 'not-allowed' : 'pointer',
-                          background: selectedRequest.status === 'completed' ? 'rgba(34,197,94,0.25)' : 'rgba(34,197,94,0.12)',
-                          color: selectedRequest.status === 'completed' ? '#4ade80' : '#86efac',
-                          border: `1px solid ${selectedRequest.status === 'completed' ? 'rgba(34,197,94,0.5)' : 'rgba(34,197,94,0.2)'}`,
-                          fontWeight: 700, fontSize: 13,
-                          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, transition: 'all 0.2s',
-                        }}>
-                        <ThumbsUp size={14}/>
-                        {selectedRequest.status === 'completed' ? 'Marked Completed' : 'Mark Completed'}
-                      </button>
-                      <button
-                        onClick={handleMarkNotCompleted}
-                        disabled={selectedRequest.status === 'pending'}
-                        style={{
-                          flex: 1, padding: '10px', borderRadius: 8,
-                          cursor: selectedRequest.status === 'pending' ? 'not-allowed' : 'pointer',
-                          background: selectedRequest.status === 'pending' ? 'rgba(239,68,68,0.2)' : 'rgba(239,68,68,0.08)',
-                          color: selectedRequest.status === 'pending' ? '#f87171' : '#fca5a5',
-                          border: `1px solid ${selectedRequest.status === 'pending' ? 'rgba(239,68,68,0.4)' : 'rgba(239,68,68,0.15)'}`,
-                          fontWeight: 700, fontSize: 13,
-                          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, transition: 'all 0.2s',
-                        }}>
-                        <ThumbsDown size={14}/>
-                        {selectedRequest.status === 'pending' ? 'Not Completed' : 'Mark Not Completed'}
-                      </button>
-                    </div>
-                  </div>
-                )}
+{/* ── Staff Actions: Mark Complete ── */}
+{isStaff && (
+  <div style={{
+    background: 'rgba(6,182,212,0.06)', border: '1px solid rgba(6,182,212,0.18)',
+    borderRadius: 12, padding: 16, display: 'flex', flexDirection: 'column', gap: 12,
+  }}>
+    <p style={{ color: '#67e8f9', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6, margin: 0 }}>
+      <ShieldCheck size={14}/> Staff Actions
+    </p>
+
+    {selectedRequest.status !== 'completed' && (
+      <div>
+        <label style={{ color: '#9ca3af', fontSize: 11, marginBottom: 5, display: 'block' }}>
+          Resolution Note (shown to student)
+        </label>
+        <textarea
+          rows={2}
+          placeholder="Describe what was done to resolve this issue..."
+          value={completionNote}
+          onChange={e => setCompletionNote(e.target.value)}
+          style={{
+            width: '100%', background: 'rgba(255,255,255,0.05)',
+            border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8,
+            color: '#e5e7eb', fontSize: 13, padding: '9px 12px',
+            resize: 'vertical', outline: 'none', fontFamily: 'inherit',
+            boxSizing: 'border-box',
+          }}
+        />
+      </div>
+    )}
+
+    {selectedRequest.completionNote && (
+      <div style={{
+        padding: '10px 12px', background: 'rgba(34,197,94,0.07)',
+        border: '1px solid rgba(34,197,94,0.2)', borderRadius: 8,
+      }}>
+        <p style={{ color: '#4ade80', fontSize: 11, fontWeight: 700, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+          <CheckCircle2 size={11}/> Resolution Note
+        </p>
+        <p style={{ color: '#9ca3af', fontSize: 12, margin: 0 }}>{selectedRequest.completionNote}</p>
+      </div>
+    )}
+
+    <div style={{ display: 'flex', gap: 10 }}>
+      <button
+        onClick={handleMarkCompleted}
+        disabled={selectedRequest.status === 'completed'}
+        style={{
+          flex: 1, padding: '10px', borderRadius: 8,
+          cursor: selectedRequest.status === 'completed' ? 'not-allowed' : 'pointer',
+          background: selectedRequest.status === 'completed' ? 'rgba(34,197,94,0.25)' : 'rgba(34,197,94,0.12)',
+          color: selectedRequest.status === 'completed' ? '#4ade80' : '#86efac',
+          border: `1px solid ${selectedRequest.status === 'completed' ? 'rgba(34,197,94,0.5)' : 'rgba(34,197,94,0.2)'}`,
+          fontWeight: 700, fontSize: 13,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+        }}>
+        <ThumbsUp size={14}/>
+        {selectedRequest.status === 'completed' ? 'Marked Completed' : 'Mark Completed'}
+      </button>
+      <button
+        onClick={handleMarkNotCompleted}
+        disabled={selectedRequest.status === 'pending'}
+        style={{
+          flex: 1, padding: '10px', borderRadius: 8,
+          cursor: selectedRequest.status === 'pending' ? 'not-allowed' : 'pointer',
+          background: 'rgba(239,68,68,0.08)',
+          color: '#fca5a5',
+          border: '1px solid rgba(239,68,68,0.15)',
+          fontWeight: 700, fontSize: 13,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+        }}>
+        <ThumbsDown size={14}/> Mark Not Completed
+      </button>
+    </div>
+  </div>
+)}
 
                 {/* ── Chat ── */}
                 <div style={{

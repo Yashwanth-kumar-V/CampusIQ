@@ -55,6 +55,11 @@
   --nav-height: 72px;
 }
 
+/* html {
+  font-size: var(--font-size-base, 15px);
+  scroll-behavior: smooth;
+} */
+
 /* ══════════════════════════════════════════
    LIGHT THEME TOKENS
 ══════════════════════════════════════════ */
@@ -91,6 +96,7 @@
 html { scroll-behavior:smooth; }
 
 body {
+  font-size: var(--font-size-base, 15px);
   font-family: 'DM Sans', -apple-system, sans-serif;
   background: var(--bg-base);
   color: var(--text-primary);

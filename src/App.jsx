@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect } from 'react';
+import { useUserSettings } from './hooks/useUserSettings';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './components/AuthContext';
 import { ThemeProvider } from './components/ThemeContext';
@@ -37,6 +38,23 @@ const Spinner = () => (
 
 const AppRoutes = () => {
   const { user, loading } = useAuth();
+  const { settings } = useUserSettings(user?.uid);
+  useEffect(() => {
+  if (!settings?.appearance) return;
+  const { accentColor, fontSize } = settings.appearance;
+
+  if (accentColor) {
+    document.documentElement.style.setProperty('--accent', accentColor);
+    document.documentElement.style.setProperty('--primary', accentColor);
+    document.documentElement.style.setProperty('--primary-light', accentColor + 'cc');
+    document.documentElement.style.setProperty('--border-accent', accentColor + '80');
+  }
+
+  const sizeMap = { small: '13px', medium: '15px', large: '17px' };
+  if (fontSize) {
+    document.documentElement.style.setProperty('--font-size-base', sizeMap[fontSize] || '15px');
+  }
+}, [settings?.appearance]);
   const location = useLocation();
 
   if (loading) return <Spinner />;

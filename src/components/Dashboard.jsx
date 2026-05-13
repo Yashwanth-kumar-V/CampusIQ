@@ -233,6 +233,9 @@ const Dashboard = () => {
   const [refreshKey, setRefreshKey]     = useState(0);
 
   const firstName    = user?.displayName?.split(' ')[0] || user?.email?.split('@')[0] || 'there';
+  const isFaculty = user?.role === 'Faculty';
+  const isStaff   = user?.role === 'Staff';
+  const isStudent = !isFaculty && !isStaff;
   const avatarLetter = (user?.displayName?.[0] || user?.email?.[0] || 'U').toUpperCase();
 
   // Theme-aware color helpers
@@ -262,22 +265,29 @@ const Dashboard = () => {
   setStatsLoading(true);
   const srRef = collection(db, 'serviceRequests');
 
-  // Live listener for ALL user requests
-  const unsubAll = onSnapshot(
-    query(srRef, where('submittedByUid', '==', user.uid)),
-    (snap) => {
-      const all = snap.docs.map(d => d.data());
-      setStats(prev => ({
-        ...prev,
-        services:  all.length,
-        pending:   all.filter(d => d.status === 'pending').length,
-        resolved:  all.filter(d => d.status === 'completed' || d.status === 'resolved').length,
-      }));
-      setStatsLoading(false);
-    }
-  );
+  let srQuery;
+  if (isFaculty) {
+    // Faculty sees all requests
+    srQuery = query(srRef);
+  } else if (isStaff) {
+    // Staff sees only assigned to them
+    srQuery = query(srRef, where('assignedToStaffUid', '==', user.uid));
+  } else {
+    // Student sees own
+    srQuery = query(srRef, where('submittedByUid', '==', user.uid));
+  }
 
-  // Live listener for announcements count
+  const unsubAll = onSnapshot(srQuery, (snap) => {
+    const all = snap.docs.map(d => d.data());
+    setStats(prev => ({
+      ...prev,
+      services:  all.length,
+      pending:   all.filter(d => d.status === 'pending').length,
+      resolved:  all.filter(d => d.status === 'completed' || d.status === 'resolved').length,
+    }));
+    setStatsLoading(false);
+  });
+
   const unsubAnn = onSnapshot(
     query(collection(db, 'announcements'), limit(50)),
     (snap) => {
@@ -285,11 +295,8 @@ const Dashboard = () => {
     }
   );
 
-  return () => {
-    unsubAll();
-    unsubAnn();
-  };
-}, [user]);
+  return () => { unsubAll(); unsubAnn(); };
+}, [user, isFaculty, isStaff]);
 
   /* ── Live campus alerts ───────────────────── */
   useEffect(() => {
@@ -303,13 +310,30 @@ const Dashboard = () => {
 
   /* ── Recent service requests ──────────────── */
   useEffect(() => {
-    if (!user) return;
-    const q = query(
+  if (!user) return;
+
+  let q;
+  if (isFaculty) {
+    q = query(
+      collection(db, 'serviceRequests'),
+      orderBy('createdAt', 'desc'),
+      limit(3)
+    );
+  } else if (isStaff) {
+    q = query(
+      collection(db, 'serviceRequests'),
+      where('assignedToStaffUid', '==', user.uid),
+      orderBy('createdAt', 'desc'),
+      limit(3)
+    );
+  } else {
+    q = query(
       collection(db, 'serviceRequests'),
       where('submittedByUid', '==', user.uid),
       orderBy('createdAt', 'desc'),
       limit(3)
     );
+  }
     const unsub = onSnapshot(q,
       (snap) => { setRecentServices(snap.docs.map(d => ({ id: d.id, ...d.data() }))); setServicesLoading(false); },
       () => setServicesLoading(false)
@@ -359,7 +383,9 @@ const Dashboard = () => {
               {getGreeting()}, {firstName}! 👋
             </h1>
             <p style={{ color: tc.muted, fontSize: '13px', margin: '3px 0 0' }}>
-              Here's what's happening across campus today
+            {isFaculty && 'Review and assign student service requests across campus.'}
+            {isStaff && 'Here are the tasks assigned to you today.'}
+            {isStudent && "Here's what's happening across campus today"}
             </p>
           </div>
         </div>
@@ -396,10 +422,18 @@ const Dashboard = () => {
         gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
         gap: '16px', marginBottom: '28px',
       }}>
-        <StatCard icon={Wrench}       label="My Service Requests" value={stats.services}      color="blue"   loading={statsLoading} delay={0}    />
-        <StatCard icon={Clock}        label="Pending Requests"     value={stats.pending}       color="orange" loading={statsLoading} delay={0.06} />
-        <StatCard icon={CheckCircle2} label="Resolved Requests"    value={stats.resolved}      color="green"  loading={statsLoading} delay={0.12} />
-        <StatCard icon={Bell}         label="Campus Announcements" value={stats.announcements} color="purple" loading={statsLoading} delay={0.18} />
+        <StatCard icon={Wrench}
+        label={isFaculty ? 'Total Requests' : isStaff ? 'Assigned to Me' : 'My Service Requests'}
+        value={stats.services} color="blue" loading={statsLoading} delay={0} />
+        <StatCard icon={Clock}
+          label={isFaculty ? 'Unassigned Requests' : 'Pending Requests'}
+          value={isFaculty ? stats.pending : stats.pending} color="orange" loading={statsLoading} delay={0.06} />
+        <StatCard icon={CheckCircle2}
+          label={isStaff ? 'Completed by Me' : 'Resolved Requests'}
+          value={stats.resolved} color="green" loading={statsLoading} delay={0.12} />
+        <StatCard icon={Bell}
+          label="Campus Announcements"
+          value={stats.announcements} color="purple" loading={statsLoading} delay={0.18} />
       </div>
 
       
@@ -530,24 +564,27 @@ const Dashboard = () => {
         >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px' }}>
             <h2 style={{
-              color: tc.heading, fontSize: '15px', fontWeight: 700, margin: 0,
-              display: 'flex', alignItems: 'center', gap: '8px',
-              fontFamily: "'Outfit', sans-serif",
-              WebkitFontSmoothing: 'antialiased',
-            }}>
-              <Activity size={16} color="#6366f1" /> My Recent Requests
-            </h2>
-            <motion.button
-              onClick={() => navigate('/services')}
-              whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
-              style={{
-                background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.28)',
-                color: '#818cf8', fontSize: '12px', fontWeight: 600, cursor: 'pointer',
-                borderRadius: '8px', padding: '5px 12px',
-              }}
-            >
-              + New
-            </motion.button>
+  color: tc.heading, fontSize: '15px', fontWeight: 700, margin: 0,
+  display: 'flex', alignItems: 'center', gap: '8px',
+  fontFamily: "'Outfit', sans-serif",
+  WebkitFontSmoothing: 'antialiased',
+}}>
+  <Activity size={16} color="#6366f1" />
+  {isFaculty ? 'Recent Campus Requests' : isStaff ? 'My Assigned Requests' : 'My Recent Requests'}
+</h2>
+{isStudent && (
+  <motion.button
+    onClick={() => navigate('/services')}
+    whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
+    style={{
+      background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.28)',
+      color: '#818cf8', fontSize: '12px', fontWeight: 600, cursor: 'pointer',
+      borderRadius: '8px', padding: '5px 12px',
+    }}
+  >
+    + New
+  </motion.button>
+)}
           </div>
 
           {servicesLoading ? (
@@ -556,12 +593,18 @@ const Dashboard = () => {
             </div>
           ) : recentServices.length === 0 ? (
             <div style={{ textAlign: 'center', color: tc.muted, fontSize: '13px', paddingTop: '20px' }}>
-              <Wrench size={28} style={{ opacity: 0.4, display: 'block', margin: '0 auto 8px' }} />
-              No service requests yet.<br />
-              <span onClick={() => navigate('/services')} style={{ color: '#6366f1', cursor: 'pointer', fontWeight: 600, fontSize: '12px' }}>
-                Submit your first request →
-              </span>
-            </div>
+  <Wrench size={28} style={{ opacity: 0.4, display: 'block', margin: '0 auto 8px' }} />
+  {isFaculty && 'No student requests yet.'}
+  {isStaff && 'No requests assigned to you yet.'}
+  {isStudent && (
+    <>
+      No service requests yet.<br />
+      <span onClick={() => navigate('/services')} style={{ color: '#6366f1', cursor: 'pointer', fontWeight: 600, fontSize: '12px' }}>
+        Submit your first request →
+      </span>
+    </>
+  )}
+</div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               {recentServices.map((sr, i) => (

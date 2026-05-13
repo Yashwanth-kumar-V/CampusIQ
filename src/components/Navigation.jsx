@@ -1,3 +1,4 @@
+import NotificationPanel from './NotificationPanel';
 import React, { useState, useEffect, useRef } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
@@ -170,19 +171,10 @@ const Navigation = () => {
             </motion.button>
 
             {/* Bell (only when logged in) */}
-            {user && (
-              <motion.button className="fnav-bell" whileHover={{ scale: 1.12 }} whileTap={{ scale: 0.9 }}>
-                <Bell size={16} />
-                <motion.span
-                  className="fnav-badge"
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  transition={{ type: 'spring', stiffness: 500, delay: 0.5 }}
-                >
-                  3
-                </motion.span>
-              </motion.button>
-            )}
+            {/* Notifications */}
+              {user && (
+                <NotificationPanel uid={user?.uid} isDark={isDark} />
+              )}
 
             {/* User dropdown / Login buttons */}
             <div ref={menuRef} style={{ position: 'relative' }}>

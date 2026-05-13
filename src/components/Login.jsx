@@ -49,11 +49,6 @@ const Login = () => {
     setLoading(false);
   };
 
-  const demoLogin = () => {
-    setEmail('demo@campus.edu');
-    setPassword('demo1234');
-  };
-
   return (
     // ✅ AnimatedBackground handles the full-page bg + canvas
     // ✅ No extra wrapper div with background — that was hiding the canvas
@@ -201,15 +196,6 @@ const Login = () => {
               {loading ? 'Signing in…' : <><span>Sign In</span><ArrowRight size={16} /></>}
             </motion.button>
           </form>
-
-          {/* Demo */}
-          <div style={{ textAlign: 'center', marginTop: 14 }}>
-            <button onClick={demoLogin}
-              style={{ background: 'none', border: 'none', color: c.subColor, fontSize: '12px', cursor: 'pointer', textDecoration: 'underline', fontFamily: "'DM Sans',sans-serif" }}
-            >
-              Use demo credentials
-            </button>
-          </div>
 
           {/* Divider */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '22px 0' }}>
