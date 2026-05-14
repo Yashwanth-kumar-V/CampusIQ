@@ -242,6 +242,51 @@ STRICT RULES:
 6. Never say "I only have IT department data" — you have ALL departments.
 7. For greetings: respond warmly and ask how you can help.`;
 
+// ── Greeting / small-talk detector ───────────────────
+const GREETING_PATTERNS = [
+  /^(hi|hello|hey|hii|helo|hai|howdy|sup|what'?s up|yo)\b/i,
+  /^good\s?(morning|afternoon|evening|night)\b/i,
+  /^(how are you|how r u|how are u|how do you do)\b/i,
+  /^(thanks|thank you|thx|ty|thank u)\b/i,
+  /^(bye|goodbye|see you|see ya|cya|later)\b/i,
+  /^(ok|okay|alright|sure|got it|noted)\s*[.!]*$/i,
+  // General CampusIQ questions
+  /(what (can|does|do) (you|campusiq) (do|help|offer|provide))/i,
+  /(what (are|is) (your|campusiq'?s?) (features?|capabilities|functions?|purpose))/i,
+  /(how (can|do) (you|campusiq) help)/i,
+  /(tell me about (yourself|campusiq))/i,
+  /(what (is|are) campusiq)/i,
+  /(introduce yourself)/i,
+  /(your (features?|capabilities|functions?|abilities))/i,
+];
+
+const SMALL_TALK_PROMPT = `You are CampusIQ Assistant — a smart, friendly AI helper for college students at Rajalakshmi Engineering College.
+
+ABOUT CAMPUSIQ (use this when asked what you can do):
+CampusIQ is an AI-powered smart campus platform with these features:
+1. 🤖 AI Assistant (you) — Answer questions about staff, rooms, schedules, documents
+2. 👥 Staff Finder — Find any staff member's contact, room, office hours, free time
+3. 📄 Document Help — Know exactly who to submit which document to and where
+4. 📍 Campus Map — Interactive Google Maps-integrated map of the entire campus
+5. 🔧 Service Requests — Submit maintenance, IT, or facility requests online
+6. 📅 Schedule Info — Check class schedules, holidays, exam dates
+7. 🔔 Notifications — Get campus alerts and announcements
+8. ⚙️ Settings — Customize your experience with themes, preferences
+
+When asked what CampusIQ can do: give a clear, enthusiastic summary of the above features.
+Format it nicely with emojis and brief descriptions — like a friendly product tour.
+
+PERSONALITY:
+- Dynamic, warm, never repetitive
+- NEVER start two responses the same way  
+- NEVER say "It's great to see you" or "Great to connect"
+- Be like a helpful senior student who knows the campus inside-out
+- Keep responses concise but complete`;
+
+function isSmallTalk(msg) {
+  return GREETING_PATTERNS.some(p => p.test(msg.trim()));
+}
+
 // ── Chat endpoint ─────────────────────────────────────
 app.post("/api/chat", async (req, res) => {
   const rawMessage = req.body.message?.trim();
@@ -253,30 +298,48 @@ app.post("/api/chat", async (req, res) => {
   console.log(`💬 "${rawMessage}"`);
 
   try {
-    // Step 1: Pure JS lookup — 100% accurate, no hallucination
+    // Step 0: Handle greetings & small talk — skip JS lookup entirely
+    if (isSmallTalk(userMessage)) {
+      console.log(`👋 Small talk detected`);
+      const greetResponse = await groq.chat.completions.create({
+        model: 'llama-3.3-70b-versatile',
+        messages: [
+          { role: 'system', content: SMALL_TALK_PROMPT },
+          { role: 'user', content: userMessage },
+        ],
+        max_tokens: 150,
+        temperature: 1.2,
+        top_p: 0.9,
+      });
+      const reply = greetResponse.choices[0]?.message?.content 
+        || "Hey! How can I help you today?";
+      return res.json({ reply });
+    }
+
+    // Step 1: Pure JS lookup
     const lookup = jsLookup(userMessage);
     console.log(`🔍 Lookup type: ${lookup.type}, found: ${lookup.found}, count: ${lookup.data.length}`);
 
     // Step 2: Build guaranteed-accurate context
     const context = buildGuaranteedContext(lookup, userMessage);
 
-    // Step 3: Send to Groq ONLY for formatting/presentation
-    // REPLACE WITH THIS:
-const conversationHistory = history
-  .slice(-6)
-  .filter(m => m.content?.trim() && m.role === 'user') // ← ONLY user messages, drop assistant replies
-  .map(m => ({ role: 'user', content: m.content }));
+    // Step 3: Send to Groq with conversation history
+    const conversationHistory = history
+      .slice(-6)
+      .filter(m => m.content?.trim())
+      .map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.content }));
 
     const messages = [
-  { role: 'system', content: SYSTEM_PROMPT },
-  { role: 'user', content: context }, // ← NO history at all
-];
+      { role: 'system', content: SYSTEM_PROMPT },
+      ...conversationHistory,
+      { role: 'user', content: context },
+    ];
 
     const response = await groq.chat.completions.create({
       model: 'llama-3.3-70b-versatile',
       messages,
       max_tokens: 1200,
-      temperature: 0.3, // low = more faithful to given data
+      temperature: 0.3,
     });
 
     const reply = response.choices[0]?.message?.content

@@ -51,6 +51,139 @@ const VOICE_PRESETS = [
   { id: 'indian', label: '🇮🇳 Indian English', pitch: 1.0,  rate: 0.95, lang: 'en-IN', preferGender: null     },
 ];
 
+
+const MessageRenderer = ({ content, textColor }) => {
+  const lines = content.split('\n');
+
+  // Detect free time table block
+  const freeTimeStart = lines.findIndex(l => /free time/i.test(l));
+  const freeTimeLines = [];
+  const freeTimeDays = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
+
+  if (freeTimeStart !== -1) {
+    for (let i = freeTimeStart + 1; i < lines.length; i++) {
+      const isDayLine = freeTimeDays.some(d => lines[i].toLowerCase().includes(d));
+      if (isDayLine) freeTimeLines.push(lines[i]);
+      else if (freeTimeLines.length > 0) break;
+    }
+  }
+
+  const freeTimeSet = new Set(freeTimeLines.map(l => l.trim()));
+
+  const renderLine = (line, idx) => {
+    const trimmed = line.trim();
+    if (!trimmed) return <div key={idx} style={{ height: '6px' }} />;
+
+    // Skip raw free time lines — rendered in table below
+    if (freeTimeSet.has(trimmed)) return null;
+
+    // "Free Time" label — render table after it
+    if (/^\*?\s*free time\s*[📅:*]*/i.test(trimmed)) {
+      return (
+        <div key={idx}>
+          <div style={{
+            color: '#a5b4fc', fontSize: '13px', fontWeight: 600,
+            marginTop: '10px', marginBottom: '6px',
+            display: 'flex', alignItems: 'center', gap: '5px'
+          }}>
+            📅 Free Time
+          </div>
+          <table style={{
+            width: '100%', borderCollapse: 'collapse',
+            fontSize: '13px', marginBottom: '10px',
+          }}>
+            <thead>
+              <tr>
+                {['Day', 'Available Hours'].map(h => (
+                  <th key={h} style={{
+                    textAlign: 'left', padding: '6px 10px',
+                    background: 'rgba(99,102,241,0.25)',
+                    color: '#c7d2fe', fontWeight: 600,
+                    borderRadius: '4px', fontSize: '12px',
+                  }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {freeTimeLines.map((fl, fi) => {
+                const [day, ...rest] = fl.replace(/[*📅]/g, '').split(':');
+                return (
+                  <tr key={fi} style={{
+                    background: fi % 2 === 0 ? 'rgba(99,102,241,0.08)' : 'transparent'
+                  }}>
+                    <td style={{
+                      padding: '6px 10px', color: '#a5b4fc',
+                      fontWeight: 500, whiteSpace: 'nowrap'
+                    }}>
+                      {day.trim()}
+                    </td>
+                    <td style={{ padding: '6px 10px', color: textColor }}>
+                      {rest.join(':').trim()}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      );
+    }
+
+    // Bold **text** inline
+    const renderInline = (text) => {
+      const parts = text.split(/\*\*(.*?)\*\*/g);
+      return parts.map((part, i) =>
+        i % 2 === 1
+          ? <strong key={i} style={{ color: '#e2e8f0', fontWeight: 600 }}>{part}</strong>
+          : part
+      );
+    };
+
+    // Bullet line: starts with * or -
+    if (/^[\*\-]\s+/.test(trimmed)) {
+      const text = trimmed.replace(/^[\*\-]\s+/, '');
+      // Key-value line like "* Name: Dr. XYZ"
+      const kvMatch = text.match(/^([^:]+):\s*(.+)$/);
+      if (kvMatch) {
+        return (
+          <div key={idx} style={{
+            display: 'flex', gap: '8px', padding: '3px 0',
+            fontSize: '14px', lineHeight: 1.6,
+          }}>
+            <span style={{ color: '#6366f1', flexShrink: 0 }}>▸</span>
+            <span>
+              <span style={{ color: '#a5b4fc', fontWeight: 600 }}>{kvMatch[1]}: </span>
+              <span style={{ color: textColor }}>{renderInline(kvMatch[2])}</span>
+            </span>
+          </div>
+        );
+      }
+      return (
+        <div key={idx} style={{
+          display: 'flex', gap: '8px', padding: '3px 0',
+          fontSize: '14px', lineHeight: 1.6, color: textColor,
+        }}>
+          <span style={{ color: '#6366f1', flexShrink: 0 }}>▸</span>
+          <span>{renderInline(text)}</span>
+        </div>
+      );
+    }
+
+    // Plain paragraph
+    return (
+      <p key={idx} style={{
+        color: textColor, fontSize: '14px',
+        lineHeight: 1.65, margin: '3px 0',
+      }}>
+        {renderInline(trimmed)}
+      </p>
+    );
+  };
+
+  return <div>{lines.map((line, idx) => renderLine(line, idx))}</div>;
+};
+
+
 const AIChatbot = () => {
   const { isDark } = useTheme();
 const c = {
@@ -605,10 +738,7 @@ border: msg.type === 'bot'
   : '1px solid rgba(99,102,241,0.3)',
                   position: 'relative',
                 }}>
-                  <p style={{
-  color: c.msgText, fontSize: '14px', lineHeight: 1.65,
-  margin: 0, whiteSpace: 'pre-line',
-}}>{msg.content}</p>
+                  <MessageRenderer content={msg.content} textColor={c.msgText} />
 
                   {/* Copy button on bot messages */}
                   {msg.type === 'bot' && (

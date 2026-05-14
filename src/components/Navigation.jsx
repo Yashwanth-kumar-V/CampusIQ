@@ -173,8 +173,8 @@ const Navigation = () => {
             {/* Bell (only when logged in) */}
             {/* Notifications */}
               {user && (
-                <NotificationPanel uid={user?.uid} isDark={isDark} />
-              )}
+  <NotificationPanel uid={user?.uid} isDark={isDark} />
+)}
 
             {/* User dropdown / Login buttons */}
             <div ref={menuRef} style={{ position: 'relative' }}>

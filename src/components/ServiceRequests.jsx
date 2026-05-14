@@ -297,7 +297,7 @@ useEffect(() => {
 // Notify all faculty/staff
 const facultyQuery = query(
   collection(db, 'users'),
-  where('role', 'in', ['Faculty', 'Staff'])
+  where('role', '==', 'Faculty')
 );
 const facultySnap = await getDocs(facultyQuery);
 facultySnap.forEach(facultyDoc => {
@@ -345,6 +345,7 @@ facultySnap.forEach(facultyDoc => {
     await updateRequestField(selectedRequest.id, {
   assignedTo: user.name,
   assignedToUid: user.uid,
+  assignedToStaffUid: user.uid, 
   status: 'in-progress',
   progressLog: arrayUnion(logEntry),
 });
@@ -429,17 +430,25 @@ sendNotification(selectedRequest.submittedByUid, {
 setChatInput('');
 
 // Notify the other party
+// Find handleSendChat, replace the notification block:
 if (isSolver) {
-  // Faculty sent → notify the student
+  // Faculty or Staff replied → notify the student only
   sendNotification(selectedRequest.submittedByUid, {
     type: 'general',
     title: `Reply on "${selectedRequest.title}"`,
-    body: `${user.name || 'Faculty'}: ${chatInput.trim()}`,
+    body: `${user.name || 'Staff'}: ${chatInput.trim()}`,
   });
 } else {
-  // Student sent → notify assigned faculty (if any)
-  if (selectedRequest.assignedToUid) {
-    sendNotification(selectedRequest.assignedToUid, {
+  // Student replied → notify assigned staff first, then faculty as fallback
+  // Never notify both — pick the most relevant person
+  const notifyUid = 
+    selectedRequest.assignedToStaffUid ||  // staff assigned by faculty
+    selectedRequest.facultyUid ||           // faculty who reviewed it
+    selectedRequest.assignedToUid ||        // faculty who took it directly
+    null;
+
+  if (notifyUid) {
+    sendNotification(notifyUid, {
       type: 'general',
       title: `Student replied on "${selectedRequest.title}"`,
       body: `${user.name || 'Student'}: ${chatInput.trim()}`,
@@ -709,10 +718,25 @@ if (isSolver) {
       <AnimatePresence>
         {showDetailsModal && selectedRequest && (
           <div className="modal-overlay" onClick={closeDetails}
-            style={{ alignItems: 'center', justifyContent: 'center' }}>
+  style={{ 
+    alignItems: 'flex-start', 
+    justifyContent: 'center',
+    overflowY: 'auto',
+    padding: '20px 16px',
+    boxSizing: 'border-box',
+  }}>
             <motion.div
               className="modal"
-              style={{ maxWidth: 600, width: '100%', maxHeight: '92vh', overflowY: 'auto', padding: 0, borderRadius: 18 }}
+              style={{ 
+  maxWidth: 600, 
+  width: '100%', 
+  maxHeight: 'none',      // ← remove height restriction
+  overflowY: 'visible',   // ← let overlay handle scrolling
+  padding: 0, 
+  borderRadius: 18,
+  margin: 'auto',         // ← center vertically
+  position: 'relative',
+}}
               initial={{ scale: 0.88, opacity: 0, y: 24 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.88, opacity: 0, y: 24 }}
